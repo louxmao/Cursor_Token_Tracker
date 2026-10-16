@@ -23,18 +23,19 @@ The second table is the conversation total, with the same column order, plus mod
 
 ## Example
 
-Turn #2 · grok-4.7-high
+Turn #3 · composer-2.5
 
 | cache read | cache write | uncached input | output | total |
 | ---: | ---: | ---: | ---: | ---: |
-| 941,440 | 0 | 36,335 | 25,334 | 1,003,109 |
+| 0 | 8,200 | 3,100 | 1,450 | 12,750 |
 
 conversation total
 
 | model | cache read | cache write | uncached | output | total | turns |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | grok-4.7-high | 1,951,104 | 0 | 92,309 | 55,868 | 2,099,281 | 2 |
-| all models | 1,951,104 | 0 | 92,309 | 55,868 | 2,099,281 | 2 |
+| composer-2.5 | 0 | 8,200 | 3,100 | 1,450 | 12,750 | 1 |
+| all models | 1,951,104 | 8,200 | 95,409 | 57,318 | 2,112,031 | 3 |
 
 ## Requirements
 
