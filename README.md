@@ -21,6 +21,21 @@ The first table is the last finished turn: uncached input, cache read, cache wri
 
 The second table is the conversation total: model, those same measures, and turns. One row per model, then `all models`. Totals stay inside the current conversation.
 
+## Example
+
+Turn #2 · grok-4.7-high
+
+| uncached input | cache read | cache write | output | total |
+| ---: | ---: | ---: | ---: | ---: |
+| 36,335 | 941,440 | 0 | 25,334 | 1,003,109 |
+
+conversation total
+
+| model | uncached | cache read | cache write | output | total | turns |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| grok-4.7-high | 92,309 | 1,951,104 | 0 | 55,868 | 2,099,281 | 2 |
+| all models | 92,309 | 1,951,104 | 0 | 55,868 | 2,099,281 | 2 |
+
 ## Requirements
 
 - Cursor with project or user hooks
