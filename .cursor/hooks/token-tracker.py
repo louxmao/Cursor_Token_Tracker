@@ -14,6 +14,7 @@ import sys
 from pathlib import Path
 
 KEYS = ("uncached", "cache_read", "cache_write", "output", "total")
+SHOW = ("cache_read", "cache_write", "uncached", "output", "total")
 TOKEN_FIELDS = (
     "input_tokens",
     "output_tokens",
@@ -36,8 +37,8 @@ LABELS = {
         "model": "模型",
         "rounds": "回合",
         "unknown": "未知模型",
-        "short": ("未快取", "快取讀", "快取寫", "輸出", "合計"),
-        "tell": "把下面的 markdown 表格原樣接在這次回覆正文的最後。不要改數字，不要加說明，不要放進程式碼框，不要寫進輸入框，不要另外送出訊息。",
+        "short": ("快取讀", "快取寫", "未快取", "輸出", "合計"),
+        "tell": "把下面的 HTML 原樣接在這次回覆正文的最後。不要改數字，不要加說明，不要放進程式碼框，不要寫進輸入框，不要另外送出訊息。",
     },
     "en": {
         "turn": "Turn #{n} · {model}",
@@ -53,8 +54,8 @@ LABELS = {
         "model": "model",
         "rounds": "turns",
         "unknown": "unknown model",
-        "short": ("uncached", "cache read", "cache write", "output", "total"),
-        "tell": "Append the markdown tables below verbatim at the end of this reply. Do not change the numbers, add commentary, wrap them in a code fence, type them into the composer, or send another message.",
+        "short": ("cache read", "cache write", "uncached", "output", "total"),
+        "tell": "Append the HTML below verbatim at the end of this reply. Do not change the numbers, add commentary, wrap it in a code fence, type it into the composer, or send another message.",
     },
 }
 
@@ -96,14 +97,27 @@ def token_parts(payload):
     }
 
 
-def md_table(headers, rows, numeric_from):
-    lines = [
-        "| " + " | ".join(headers) + " |",
-        "| " + " | ".join("---:" if i >= numeric_from else "---" for i in range(len(headers))) + " |",
-    ]
+def esc(text):
+    return str(text).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+def html_table(headers, rows, numeric_from):
+    def cell(tag, text, numeric):
+        align = "right" if numeric else "left"
+        return (
+            f'<{tag} style="text-align:{align};padding:2px 8px;white-space:nowrap">'
+            f"{esc(text)}</{tag}>"
+        )
+
+    head = "".join(cell("th", header, i >= numeric_from) for i, header in enumerate(headers))
+    body = []
     for row in rows:
-        lines.append("| " + " | ".join(str(cell) for cell in row) + " |")
-    return "\n".join(lines)
+        tds = "".join(cell("td", value, i >= numeric_from) for i, value in enumerate(row))
+        body.append(f"<tr>{tds}</tr>")
+    return (
+        '<table style="width:auto;border-collapse:collapse;font-size:inherit">'
+        f"<thead><tr>{head}</tr></thead><tbody>{''.join(body)}</tbody></table>"
+    )
 
 
 def totals(turns, labels):
@@ -130,28 +144,32 @@ def ledger_text(turns, labels):
     last = turns[-1]
     shown = last.get("model") or labels["unknown"]
     parts = last if last.get("has_tokens") else None
-    lines = [labels["turn"].format(n=len(turns), model=shown), ""]
-    headers = [labels[key] for key in (*KEYS[:-1], "total")]
+    chunks = [f"<p style=\"margin:8px 0 4px\">{esc(labels['turn'].format(n=len(turns), model=shown))}</p>"]
+    headers = [labels[key] for key in SHOW]
     if parts is None:
-        lines.append(labels["missing"])
+        chunks.append(f"<p style=\"margin:4px 0\">{esc(labels['missing'])}</p>")
     else:
-        lines.append(md_table(headers, [[fmt(parts[key]) for key in (*KEYS[:-1], "total")]], 0))
-    lines.extend(["", labels["cumulative"], ""])
+        chunks.append(html_table(headers, [[fmt(parts[key]) for key in SHOW]], 0))
+    chunks.append(f"<p style=\"margin:8px 0 4px\">{esc(labels['cumulative'])}</p>")
     order, sums, counts = totals(turns, labels)
     if not order:
-        lines.append(labels["empty"])
-        return "\n".join(lines)
-    rows = []
-    grand = {key: 0 for key in KEYS}
-    counted = 0
-    for name in order:
-        counted += counts[name]
-        for key in KEYS:
-            grand[key] += sums[name][key]
-        rows.append([name] + [fmt(sums[name][key]) for key in KEYS] + [str(counts[name])])
-    rows.append([labels["all"]] + [fmt(grand[key]) for key in KEYS] + [str(counted)])
-    lines.append(md_table([labels["model"], *labels["short"], labels["rounds"]], rows, 1))
-    return "\n".join(lines)
+        chunks.append(f"<p style=\"margin:4px 0\">{esc(labels['empty'])}</p>")
+    else:
+        rows = []
+        grand = {key: 0 for key in KEYS}
+        counted = 0
+        for name in order:
+            counted += counts[name]
+            for key in KEYS:
+                grand[key] += sums[name][key]
+            rows.append([name] + [fmt(sums[name][key]) for key in SHOW] + [str(counts[name])])
+        rows.append([labels["all"]] + [fmt(grand[key]) for key in SHOW] + [str(counted)])
+        chunks.append(html_table([labels["model"], *labels["short"], labels["rounds"]], rows, 1))
+    return (
+        '<div style="font-size:smaller;width:max-content;max-width:100%">'
+        + "".join(chunks)
+        + "</div>"
+    )
 
 
 def context_for(turns, labels):
@@ -271,8 +289,9 @@ def selftest():
         "cache_write_tokens": 18440,
     }
     text = apply(state, first, labels)
-    assert text.startswith("本回合 #1 · grok-4.7"), text
-    assert "| 未快取輸入 | 快取讀取 | 快取寫入 | 輸出 | 合計 |" in text
+    assert "本回合 #1 · grok-4.7" in text, text
+    assert text.find(">快取讀取<") < text.find(">快取寫入<") < text.find(">未快取輸入<")
+    assert "font-size:smaller" in text and "width:max-content" in text
     assert "1,204" in text and "842,110" in text and "865,656" in text
     assert apply(state, first, labels) is None
     assert len(state["conversations"]["c1"]["turns"]) == 1
@@ -301,8 +320,8 @@ def selftest():
         "cache_write_tokens": 8200,
     }
     both = apply(state, second, labels)
-    assert "| 模型 | 未快取 | 快取讀 | 快取寫 | 輸出 | 合計 | 回合 |" in both
-    assert "composer-2.5" in both and "| 2 |" in both
+    assert both.find(">快取讀<") < both.find(">未快取<")
+    assert "composer-2.5" in both and ">2<" in both
 
     clamped = token_parts(
         {
@@ -318,12 +337,14 @@ def selftest():
     assert "additional_context" in ctx and "followup_message" not in ctx
     assert "不要寫進輸入框" in ctx["additional_context"]
     english = ledger_text(state["conversations"]["c1"]["turns"], LABELS["en"])
-    assert english.startswith("Turn #") and "| uncached input |" in english
+    assert "Turn #" in english and english.find(">cache read<") < english.find(">uncached input<")
     assert is_prompt({"hook_event_name": "beforeSubmitPrompt", "prompt": "hi"})
     assert not is_prompt({"hook_event_name": "stop", "status": "completed"})
     previous = os.environ.get("CURSOR_TOKEN_TRACKER_STATE")
     os.environ["CURSOR_TOKEN_TRACKER_STATE"] = "/tmp/cursor-token-tracker-selftest.json"
     try:
+        marker = Path("/tmp/prompted/g-doc")
+        marker.unlink(missing_ok=True)
         assert claim_prompt("g-doc") is True
         assert claim_prompt("g-doc") is False
     finally:

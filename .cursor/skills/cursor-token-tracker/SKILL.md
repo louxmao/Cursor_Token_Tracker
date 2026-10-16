@@ -8,4 +8,4 @@ disable-model-invocation: true
 
 # Token ledger
 
-When context includes a token ledger, paste that markdown at the end of the reply, unchanged. Do not wrap it in a code fence, do not explain it, and do not put it in the user input.
+When context includes a token ledger, paste that HTML at the end of the reply, unchanged. Do not wrap it in a code fence, do not explain it, and do not put it in the user input.

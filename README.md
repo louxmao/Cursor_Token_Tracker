@@ -2,7 +2,7 @@
 
 [繁體中文](README.zh-TW.md)
 
-After each agent turn, record that turn's token use and the running total for the conversation, split by model. The next reply pastes two markdown tables at the end. Nothing is typed into the chat input.
+After each agent turn, record that turn's token use and the running total for the conversation, split by model. The next reply pastes two tables at the end. Nothing is typed into the chat input.
 
 Cursor reports the numbers on the `stop` hook (`input_tokens`, `output_tokens`, `cache_read_tokens`, `cache_write_tokens`, `model`). `input_tokens` already includes both cache fields. Uncached input is `input_tokens - cache_read_tokens - cache_write_tokens`, clamped at zero. The turn total is `input_tokens + output_tokens`.
 
@@ -17,24 +17,24 @@ mkdir -p ~/.cursor/cursor-token-tracker
 printf 'en\n' > ~/.cursor/cursor-token-tracker/lang
 ```
 
-The first table is the last finished turn: uncached input, cache read, cache write, output, total.
+The first table is the last finished turn. Columns are cache read, cache write, uncached input, output, then total.
 
-The second table is the conversation total: model, those same measures, and turns. One row per model, then `all models`. Totals stay inside the current conversation.
+The second table is the conversation total, with the same column order, plus model and turns. One row per model, then `all models`. In chat the tables are one font size smaller, only as wide as their content, and aligned left. Totals stay inside the current conversation.
 
 ## Example
 
 Turn #2 · grok-4.7-high
 
-| uncached input | cache read | cache write | output | total |
+| cache read | cache write | uncached input | output | total |
 | ---: | ---: | ---: | ---: | ---: |
-| 36,335 | 941,440 | 0 | 25,334 | 1,003,109 |
+| 941,440 | 0 | 36,335 | 25,334 | 1,003,109 |
 
 conversation total
 
-| model | uncached | cache read | cache write | output | total | turns |
+| model | cache read | cache write | uncached | output | total | turns |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| grok-4.7-high | 92,309 | 1,951,104 | 0 | 55,868 | 2,099,281 | 2 |
-| all models | 92,309 | 1,951,104 | 0 | 55,868 | 2,099,281 | 2 |
+| grok-4.7-high | 1,951,104 | 0 | 92,309 | 55,868 | 2,099,281 | 2 |
+| all models | 1,951,104 | 0 | 92,309 | 55,868 | 2,099,281 | 2 |
 
 ## Requirements
 
