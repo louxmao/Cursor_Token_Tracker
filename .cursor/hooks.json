@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "hooks": {
+    "stop": [
+      {
+        "command": "/usr/bin/python3 .cursor/hooks/token-tracker.py",
+        "timeout": 10,
+        "loop_limit": 1
+      }
+    ]
+  }
+}
