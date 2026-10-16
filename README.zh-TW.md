@@ -2,11 +2,11 @@
 
 [English](README.md)
 
-每個 agent 回合結束後，記錄這一回的 token，以及這個對話依模型分開的累計。下一則回應會把兩張表格接在正文最後。不會把文字打進對話輸入框。
+每個 agent 回合結束後，記錄這一回的 token，以及這個對話依模型分開的累計。回答本身就是回答。寫完後，同一則再補上第二個結果，內容只有這一回的用量表。
 
 數字來自回合結束時的 `stop` hook（`input_tokens`、`output_tokens`、`cache_read_tokens`、`cache_write_tokens`、`model`）。`input_tokens` 已含兩種快取。未快取輸入是 `input_tokens - cache_read_tokens - cache_write_tokens`，小於 0 就當 0。本回合合計是 `input_tokens + output_tokens`。
 
-回應底下的表格是已經結束的回合。這一則自己的 token 要等回應寫完才知道。每一回只記一個模型。子代理的 token 不在這份資料裡。若沒有 token 欄位，這一回顯示「無 token 資料」，也不把 0 加進累計。
+用量表是剛剛那則回答的用量，因為 token 要等回答寫完才知道。這次補上的用量表不計入累計。每一回只記一個模型。子代理的 token 不在這份資料裡。若沒有 token 欄位，這一回顯示「無 token 資料」，也不把 0 加進累計。
 
 ## 畫面上會看到
 
