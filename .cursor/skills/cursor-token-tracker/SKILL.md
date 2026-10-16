@@ -1,15 +1,13 @@
 ---
 name: cursor-token-tracker
 description: >-
-  Echo the token ledger that the stop hook posts after each turn. Use when the
-  user message starts with "Token ·" and is a per-turn token report.
+  Tell the user where the local token ledger page is. Use only when they ask
+  for token usage. Do not paste counts into the chat input.
+disable-model-invocation: true
 ---
 
-# Token ledger echo
+# Token ledger
 
-The stop hook submits the ledger as the next user message. When that message starts with `Token ·`:
+The stop hook writes `~/.cursor/cursor-token-tracker/ledger.html` after each turn. It is a table and it refreshes itself.
 
-- Reply with the same ledger text only. Do not wrap it in a code fence.
-- Do not call tools, and do not add words before or after the ledger.
-
-Do not invent token counts.
+Do not invent token counts. Do not type the ledger into the composer or submit it as a user message.

@@ -1,8 +1,10 @@
 #!/usr/bin/python3
-"""Record parent-agent tokens on Cursor's stop hook and show the ledger.
+"""Record parent-agent tokens on Cursor's stop hook and write an HTML table.
 
-One model per turn. input_tokens already includes cache read and cache write.
-Subagent tokens are not in this payload. Echo turns (loop_count > 0) are skipped.
+Does not return followup_message. That field is submitted as the next user
+message and refills the composer. One model per turn. input_tokens already
+includes cache read and cache write. Subagent tokens are not in this payload.
+Echo turns (loop_count > 0) are skipped.
 """
 
 import json
@@ -20,42 +22,36 @@ TOKEN_FIELDS = (
 
 LABELS = {
     "zh": {
-        "turn": "Token · 本回合 #{n} · {model}",
+        "turn": "本回合 #{n} · {model}",
         "uncached": "未快取輸入",
         "cache_read": "快取讀取",
         "cache_write": "快取寫入",
         "output": "輸出",
-        "total": "本回合合計",
+        "total": "合計",
         "missing": "無 token 資料",
         "cumulative": "本對話累計",
         "empty": "尚無 token 資料",
         "all": "全部",
-        "rounds": "{n} 回合",
+        "model": "模型",
+        "rounds": "回合",
         "unknown": "未知模型",
-        "uncached_short": "未快取",
-        "cache_read_short": "快取讀",
-        "cache_write_short": "快取寫",
-        "output_short": "輸出",
-        "total_short": "合計",
+        "note": "此頁在每回合結束後更新，不會送進對話輸入框。",
     },
     "en": {
-        "turn": "Token · turn #{n} · {model}",
+        "turn": "Turn #{n} · {model}",
         "uncached": "uncached input",
         "cache_read": "cache read",
         "cache_write": "cache write",
         "output": "output",
-        "total": "turn total",
+        "total": "total",
         "missing": "no token data",
         "cumulative": "conversation total",
         "empty": "no token data yet",
         "all": "all models",
-        "rounds": "{n} turns",
+        "model": "model",
+        "rounds": "turns",
         "unknown": "unknown model",
-        "uncached_short": "uncached",
-        "cache_read_short": "cache read",
-        "cache_write_short": "cache write",
-        "output_short": "output",
-        "total_short": "total",
+        "note": "This page updates after each turn and is not typed into the chat input.",
     },
 }
 
@@ -65,6 +61,10 @@ def state_path():
     if override:
         return Path(override)
     return Path.home() / ".cursor" / "cursor-token-tracker" / "state.json"
+
+
+def ledger_path():
+    return state_path().with_name("ledger.html")
 
 
 def language():
@@ -80,12 +80,13 @@ def fmt(value):
     return f"{value:,}"
 
 
-def display_width(text):
-    return sum(2 if ord(ch) > 127 else 1 for ch in text)
-
-
-def pad(text, width):
-    return text + " " * max(0, width - display_width(text))
+def esc(text):
+    return (
+        str(text)
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+    )
 
 
 def token_parts(payload):
@@ -96,9 +97,8 @@ def token_parts(payload):
             return None
         values.append(int(value))
     incoming, output, cache_read, cache_write = values
-    uncached = max(0, incoming - cache_read - cache_write)
     return {
-        "uncached": uncached,
+        "uncached": max(0, incoming - cache_read - cache_write),
         "cache_read": cache_read,
         "cache_write": cache_write,
         "output": output,
@@ -106,74 +106,118 @@ def token_parts(payload):
     }
 
 
-def render(turn_no, model, parts, turns, labels):
-    shown = model or labels["unknown"]
-    lines = [labels["turn"].format(n=turn_no, model=shown)]
-    if parts is None:
-        lines.append(f"  {labels['missing']}")
-    else:
-        rows = [(labels[key], parts[key]) for key in (*KEYS[:-1], "total")]
-        label_width = max(display_width(label) for label, _ in rows)
-        number_width = max(len(fmt(value)) for _, value in rows)
-        for label, value in rows:
-            lines.append(f"  {pad(label, label_width)}  {fmt(value):>{number_width}}")
+def html_table(headers, rows):
+    head = "".join(f"<th>{esc(header)}</th>" for header in headers)
+    body = []
+    for row in rows:
+        cells = "".join(f"<td>{esc(cell)}</td>" for cell in row)
+        body.append(f"<tr>{cells}</tr>")
+    return (
+        "<table><thead><tr>"
+        + head
+        + "</tr></thead><tbody>"
+        + "".join(body)
+        + "</tbody></table>"
+    )
 
-    lines.append("")
-    lines.append(labels["cumulative"])
+
+def totals(turns, labels):
     sums = {}
     order = []
-    counted = 0
+    counts = {}
     for turn in turns:
         if not turn["has_tokens"]:
             continue
-        counted += 1
         name = turn["model"] or labels["unknown"]
         bucket = sums.get(name)
         if bucket is None:
             order.append(name)
             bucket = {key: 0 for key in KEYS}
             sums[name] = bucket
+            counts[name] = 0
+        counts[name] += 1
         for key in KEYS:
             bucket[key] += turn[key]
+    return order, sums, counts
+
+
+def render(turn_no, model, parts, turns, labels):
+    shown = model or labels["unknown"]
+    headers = [labels[key] for key in (*KEYS[:-1], "total")]
+    blocks = [f"<h2>{esc(labels['turn'].format(n=turn_no, model=shown))}</h2>"]
+    if parts is None:
+        blocks.append(f"<p>{esc(labels['missing'])}</p>")
+    else:
+        blocks.append(html_table(headers, [[fmt(parts[key]) for key in (*KEYS[:-1], "total")]]))
+
+    blocks.append(f"<h2>{esc(labels['cumulative'])}</h2>")
+    order, sums, counts = totals(turns, labels)
     if not order:
-        lines.append(f"  {labels['empty']}")
-        return "\n".join(lines)
+        blocks.append(f"<p>{esc(labels['empty'])}</p>")
+    else:
+        rows = []
+        grand = {key: 0 for key in KEYS}
+        counted = 0
+        for name in order:
+            counted += counts[name]
+            for key in KEYS:
+                grand[key] += sums[name][key]
+            rows.append(
+                [name] + [fmt(sums[name][key]) for key in KEYS] + [str(counts[name])]
+            )
+        rows.append([labels["all"]] + [fmt(grand[key]) for key in KEYS] + [str(counted)])
+        blocks.append(
+            html_table(
+                [labels["model"], *headers, labels["rounds"]],
+                rows,
+            )
+        )
+    return page("\n".join(blocks), labels)
 
-    names = order + [labels["all"]]
-    width = max(display_width(name) for name in names)
-    grand = {key: 0 for key in KEYS}
-    for name in order:
-        lines.append(model_line(name, sums[name], width, labels))
-        for key in KEYS:
-            grand[key] += sums[name][key]
-    extra = " · " + labels["rounds"].format(n=counted)
-    lines.append(model_line(labels["all"], grand, width, labels, extra))
-    return "\n".join(lines)
+
+def page(body, labels):
+    return f"""<!DOCTYPE html>
+<html lang="{ 'zh-Hant' if labels is LABELS['zh'] else 'en' }">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="refresh" content="2">
+<title>Token</title>
+<style>
+  body {{ margin: 24px; background: #1e1e1e; color: #e6e6e6; font: 14px/1.4 sans-serif; }}
+  h2 {{ font-size: 15px; margin: 20px 0 8px; }}
+  p.note {{ color: #9a9a9a; }}
+  table {{ border-collapse: collapse; }}
+  th, td {{ border: 1px solid #3a3a3a; padding: 6px 12px; text-align: right; }}
+  th {{ background: #2a2a2a; }}
+  th:first-child, td:first-child {{ text-align: left; }}
+</style>
+</head>
+<body>
+<p class="note">{esc(labels['note'])}</p>
+{body}
+</body>
+</html>
+"""
 
 
-def model_line(name, sums, width, labels, extra=""):
-    return (
-        f"  {pad(name, width)}  "
-        f"{labels['uncached_short']} {fmt(sums['uncached'])} · "
-        f"{labels['cache_read_short']} {fmt(sums['cache_read'])} · "
-        f"{labels['cache_write_short']} {fmt(sums['cache_write'])} · "
-        f"{labels['output_short']} {fmt(sums['output'])} · "
-        f"{labels['total_short']} {fmt(sums['total'])}{extra}"
-    )
+def seen_ids(conv):
+    found = set(conv.get("seen") or [])
+    found.update(conv.get("followups") or {})
+    return found
 
 
 def apply(state, payload, labels):
     if int(payload.get("loop_count") or 0) > 0:
-        return {}
+        return None
 
     conv_id = str(payload.get("conversation_id") or "unknown")
     gen_id = str(payload.get("generation_id") or "")
     conv = state.setdefault("conversations", {}).setdefault(
-        conv_id, {"turns": [], "followups": {}}
+        conv_id, {"turns": [], "seen": []}
     )
-    if gen_id and gen_id in conv["followups"]:
-        message = conv["followups"][gen_id]
-        return {"followup_message": message} if message else {}
+    seen = seen_ids(conv)
+    if gen_id and gen_id in seen:
+        return None
 
     parts = token_parts(payload)
     if parts is None:
@@ -185,14 +229,17 @@ def apply(state, payload, labels):
     if parts is not None:
         turn.update(parts)
     conv["turns"].append(turn)
-
-    text = render(len(conv["turns"]), model, parts, conv["turns"], labels)
-    completed = (payload.get("status") or "completed") == "completed"
     if gen_id:
-        conv["followups"][gen_id] = text if completed else ""
-    if not completed:
-        return {}
-    return {"followup_message": text}
+        conv.setdefault("seen", [])
+        if gen_id not in conv["seen"]:
+            conv["seen"].append(gen_id)
+    return render(len(conv["turns"]), model, parts, conv["turns"], labels)
+
+
+def write_ledger(html):
+    path = ledger_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(html, encoding="utf-8")
 
 
 def handle(payload, labels=None):
@@ -206,13 +253,15 @@ def handle(payload, labels=None):
         handle_file.seek(0)
         raw = handle_file.read()
         state = json.loads(raw) if raw.strip() else {"conversations": {}}
-        result = apply(state, payload, labels)
+        html = apply(state, payload, labels)
         handle_file.seek(0)
         handle_file.truncate()
         handle_file.write(json.dumps(state, ensure_ascii=False, indent=2))
         handle_file.flush()
         fcntl.flock(handle_file, fcntl.LOCK_UN)
-    return result
+    if html:
+        write_ledger(html)
+    return {}
 
 
 def selftest():
@@ -229,15 +278,16 @@ def selftest():
         "cache_read_tokens": 842110,
         "cache_write_tokens": 18440,
     }
-    message = apply(state, first, labels)["followup_message"]
-    assert message.startswith("Token · 本回合 #1 · grok-4.7"), message
-    assert "1,204" in message and "842,110" in message and "865,656" in message
-    again = apply(state, first, labels)["followup_message"]
-    assert again == message
+    html = apply(state, first, labels)
+    assert html is not None
+    assert "<th>未快取輸入</th>" in html and "<th>合計</th>" in html
+    assert "1,204" in html and "842,110" in html and "865,656" in html
+    assert "<h2>本回合 #1 · grok-4.7</h2>" in html
+    assert apply(state, first, labels) is None
     assert len(state["conversations"]["c1"]["turns"]) == 1
 
     echo = dict(first, generation_id="g-echo", loop_count=1, output_tokens=9)
-    assert apply(state, echo, labels) == {}
+    assert apply(state, echo, labels) is None
     assert len(state["conversations"]["c1"]["turns"]) == 1
 
     missing = {
@@ -247,10 +297,10 @@ def selftest():
         "status": "completed",
         "loop_count": 0,
     }
-    missing_text = apply(state, missing, labels)["followup_message"]
-    assert "無 token 資料" in missing_text
-    assert "865,656" in missing_text
-    assert missing_text.strip().endswith("1 回合")
+    missing_html = apply(state, missing, labels)
+    assert "無 token 資料" in missing_html
+    assert "865,656" in missing_html
+    assert "<td>1</td>" in missing_html
 
     second = {
         "conversation_id": "c1",
@@ -263,9 +313,10 @@ def selftest():
         "cache_read_tokens": 0,
         "cache_write_tokens": 8200,
     }
-    both = apply(state, second, labels)["followup_message"]
+    both = apply(state, second, labels)
     assert "composer-2.5" in both and "grok-4.7" in both
-    assert both.strip().endswith("2 回合")
+    assert "<th>模型</th>" in both and "<th>回合</th>" in both
+    assert "<td>2</td>" in both
 
     clamped = token_parts(
         {
@@ -277,9 +328,13 @@ def selftest():
     )
     assert clamped["uncached"] == 0 and clamped["total"] == 11
 
-    english = render(1, "grok-4.7", token_parts(first), state["conversations"]["c1"]["turns"], LABELS["en"])
-    assert english.startswith("Token · turn #1 · grok-4.7"), english
+    english = render(
+        1, "grok-4.7", token_parts(first), state["conversations"]["c1"]["turns"], LABELS["en"]
+    )
+    assert "<h2>Turn #1 · grok-4.7</h2>" in english
+    assert "<th>uncached input</th>" in english
     assert "conversation total" in english
+    assert "followup_message" not in english
 
     print("ok")
 
