@@ -38,7 +38,8 @@ LABELS = {
         "rounds": "回合",
         "unknown": "未知模型",
         "short": ("快取讀", "快取寫", "未快取", "輸出", "合計"),
-        "tell": "這則訊息是剛算完的用量表。整段回覆只輸出該訊息裡的 HTML，不要改數字，不要加說明，不要呼叫工具。",
+        "paste": "把下面的 HTML 原樣接在這次回覆正文的最後。不要改數字，不要加說明，不要放進程式碼框。",
+        "tell": "這則訊息是用量表的原始碼。整段回覆只輸出該 HTML，不要加說明，不要呼叫工具。",
     },
     "en": {
         "turn": "Turn #{n} · {model}",
@@ -55,7 +56,8 @@ LABELS = {
         "rounds": "turns",
         "unknown": "unknown model",
         "short": ("cache read", "cache write", "uncached", "output", "total"),
-        "tell": "This message is the usage table for the answer just finished. Reply with only the HTML from that message. Do not change the numbers, add commentary, or call tools.",
+        "paste": "Append the HTML below verbatim at the end of this reply. Do not change the numbers, add commentary, or wrap it in a code fence.",
+        "tell": "This message is the raw usage table. Reply with only that HTML. Do not add commentary or call tools.",
     },
 }
 
@@ -232,24 +234,14 @@ def handle(payload, labels=None):
         handle_file.seek(0)
         raw = handle_file.read()
         state = json.loads(raw) if raw.strip() else {"conversations": {}}
-        conv_id = str(payload.get("conversation_id") or "unknown")
-        gen_id = str(payload.get("generation_id") or "")
-        if is_echo_stop(conv_id, gen_id):
-            fcntl.flock(handle_file, fcntl.LOCK_UN)
-            return {}
         text = apply(state, payload, labels)
         handle_file.seek(0)
         handle_file.truncate()
         handle_file.write(json.dumps(state, ensure_ascii=False, indent=2))
         handle_file.flush()
-        status = payload.get("status") or "completed"
-        follow = text if text and status == "completed" else None
-        if follow:
-            mark_echo(conv_id, gen_id)
         fcntl.flock(handle_file, fcntl.LOCK_UN)
-    if follow:
-        path.with_name("latest.txt").write_text(follow + "\n", encoding="utf-8")
-        return {"followup_message": follow}
+    if text:
+        path.with_name("latest.txt").write_text(text + "\n", encoding="utf-8")
     return {}
 
 
@@ -300,16 +292,18 @@ def mark_echo(conv_id, gen_id):
 def submit_context(payload, labels=None):
     labels = labels or LABELS[language()]
     prompt = str(payload.get("prompt") or "")
-    if not is_ledger(prompt):
-        return {}
     if not claim_prompt(str(payload.get("generation_id") or "")):
         return {}
-    return {"additional_context": labels["tell"]}
+    if is_ledger(prompt):
+        return {"additional_context": labels["tell"]}
+    conv_id = str(payload.get("conversation_id") or "")
+    turns = (load_state().get("conversations") or {}).get(conv_id, {}).get("turns") or []
+    if not turns:
+        return {}
+    return {"additional_context": labels["paste"] + "\n\n" + ledger_text(turns, labels)}
 
 
 def stop_output(text, status):
-    if text and status == "completed":
-        return {"followup_message": text}
     return {}
 
 
@@ -383,8 +377,7 @@ def selftest():
 
     assert is_ledger('<div style="font-size:smaller">本回合 #1')
     assert not is_ledger("目前還有沒有commit的修改嗎")
-    assert stop_output(text, "completed")["followup_message"] == text
-    assert stop_output(None, "error") == {}
+    assert stop_output(text, "completed") == {}
     english = ledger_text(state["conversations"]["c1"]["turns"], LABELS["en"])
     assert "Turn #" in english and english.find(">cache read<") < english.find(">uncached input<")
     assert is_prompt({"hook_event_name": "beforeSubmitPrompt", "prompt": "hi"})

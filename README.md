@@ -2,11 +2,11 @@
 
 [繁體中文](README.zh-TW.md)
 
-After each agent turn, record that turn's token use and the running total for the conversation, split by model. The answer stays the answer. When it finishes, the same turn adds a second result that is only this turn's usage table.
+After each agent turn, record that turn's token use and the running total for the conversation, split by model. The next reply pastes the finished turns at the end of the answer. Nothing is sent as a second message.
 
 Cursor reports the numbers on the `stop` hook (`input_tokens`, `output_tokens`, `cache_read_tokens`, `cache_write_tokens`, `model`). `input_tokens` already includes both cache fields. Uncached input is `input_tokens - cache_read_tokens - cache_write_tokens`, clamped at zero. The turn total is `input_tokens + output_tokens`.
 
-The usage result is for the answer just finished, because the token counts are known only after that answer is written. That usage follow-up is not added to the totals. One model is stored per turn. Subagent tokens are not included. A turn with no token fields says `no token data` and adds nothing to the total.
+The table is the previous finished turn, because this reply's own tokens are known only after it is written. One model is stored per turn. Subagent tokens are not included. A turn with no token fields says `no token data` and adds nothing to the total.
 
 ## What you see
 

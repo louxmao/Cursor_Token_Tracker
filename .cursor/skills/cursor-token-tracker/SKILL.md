@@ -8,4 +8,4 @@ disable-model-invocation: true
 
 # Token ledger
 
-When the user message is the HTML token ledger, reply with that HTML only. Do not explain it, call tools, or put it in the composer.
+When context includes a token ledger, paste that HTML at the end of the reply, unchanged. Do not wrap it in a code fence or send it as another message. If the user message itself is that raw HTML, reply with the HTML only.
