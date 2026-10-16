@@ -225,8 +225,23 @@ def handle(payload, labels=None):
     return {}
 
 
+def claim_prompt(gen_id):
+    if not gen_id:
+        return True
+    marker = state_path().parent / "prompted" / gen_id
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        fd = os.open(marker, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    except FileExistsError:
+        return False
+    os.close(fd)
+    return True
+
+
 def submit_context(payload, labels=None):
     labels = labels or LABELS[language()]
+    if not claim_prompt(str(payload.get("generation_id") or "")):
+        return {}
     conv_id = str(payload.get("conversation_id") or "")
     turns = (load_state().get("conversations") or {}).get(conv_id, {}).get("turns") or []
     return context_for(turns, labels)
@@ -306,6 +321,16 @@ def selftest():
     assert english.startswith("Turn #") and "| uncached input |" in english
     assert is_prompt({"hook_event_name": "beforeSubmitPrompt", "prompt": "hi"})
     assert not is_prompt({"hook_event_name": "stop", "status": "completed"})
+    previous = os.environ.get("CURSOR_TOKEN_TRACKER_STATE")
+    os.environ["CURSOR_TOKEN_TRACKER_STATE"] = "/tmp/cursor-token-tracker-selftest.json"
+    try:
+        assert claim_prompt("g-doc") is True
+        assert claim_prompt("g-doc") is False
+    finally:
+        if previous is None:
+            os.environ.pop("CURSOR_TOKEN_TRACKER_STATE", None)
+        else:
+            os.environ["CURSOR_TOKEN_TRACKER_STATE"] = previous
     print("ok")
 
 
