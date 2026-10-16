@@ -1,6 +1,12 @@
 {
   "version": 1,
   "hooks": {
+    "beforeSubmitPrompt": [
+      {
+        "command": "/usr/bin/python3 .cursor/hooks/token-tracker.py",
+        "timeout": 10
+      }
+    ],
     "stop": [
       {
         "command": "/usr/bin/python3 .cursor/hooks/token-tracker.py",
